@@ -47,19 +47,32 @@ main{max-width:760px;margin:0 auto;padding:16px 20px 48px}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
-/* ===== AQUÍ AÑADES TUS PDF =====
-   file: ruta dentro de tu repositorio (carpeta pdfs/)
-   Una línea por documento. */
-const DOCS = [
-  { title: "19 de octubre de 2026 DED", note: "Catálogo", file: "19 de octubre de 2026 DED.pdf" }
-];
-/* ================================ */
+/* Repositorio de GitHub: usuario/nombre. La lista se genera sola
+   con todos los PDF que haya en el repositorio. */
+const REPO = "jrochab/Catalogos";
+let DOCS = [];
 
 const $ = id => document.getElementById(id);
 
-$("items").innerHTML = DOCS.map((d, i) =>
-  `<a class="item" href="#doc=${i}"><div><b>${d.title}</b><small>${d.note || ""}</small></div><span>Abrir</span></a>`
-).join("");
+async function loadDocs() {
+  $("items").innerHTML = '<p style="color:var(--muted)">Cargando…</p>';
+  try {
+    const r = await fetch("https://api.github.com/repos/" + REPO + "/contents/");
+    if (!r.ok) throw new Error(r.status);
+    const files = await r.json();
+    DOCS = files
+      .filter(f => f.type === "file" && /\.pdf$/i.test(f.name))
+      .map(f => ({
+        title: f.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
+        note: "",
+        file: f.name
+      }))
+      .sort((x, y) => y.file.localeCompare(x.file, "es", { numeric: true }));
+  } catch (e) { DOCS = []; }
+  $("items").innerHTML = DOCS.length
+    ? DOCS.map((d, i) => `<a class="item" href="#doc=${i}"><div><b>${d.title}</b></div><span>Abrir</span></a>`).join("")
+    : '<p style="color:var(--muted)">No se encontraron PDF. Sube alguno al repositorio y recarga.</p>';
+}
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -101,7 +114,7 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 $("back").addEventListener("click", e => { e.preventDefault(); location.hash = ""; });
-route();
+loadDocs().then(route);
 </script>
 </body>
 </html>
