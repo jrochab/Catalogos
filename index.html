@@ -51,9 +51,7 @@ main{max-width:760px;margin:0 auto;padding:16px 20px 48px}
    file: ruta dentro de tu repositorio (carpeta pdfs/)
    Una línea por documento. */
 const DOCS = [
-  { title: "Catálogo 2026",  note: "Colección completa", file: "pdfs/catalogo-2026.pdf" },
-  { title: "Portfolio",      note: "Trabajos recientes", file: "pdfs/portfolio.pdf" },
-  { title: "Tarifas",        note: "Precios vigentes",   file: "pdfs/tarifas.pdf" }
+  { title: "19 de octubre de 2026 DED", note: "Catálogo", file: "19 de octubre de 2026 DED.pdf" }
 ];
 /* ================================ */
 
@@ -72,11 +70,11 @@ async function openDoc(d) {
   $("pages").innerHTML = "";
   $("msg").style.display = "block";
   $("msg").textContent = "Cargando…";
-  $("dl").href = d.file;
+  $("dl").href = encodeURI(d.file);
   document.title = d.title;
   window.scrollTo(0, 0);
   try {
-    const pdf = await pdfjsLib.getDocument(d.file).promise;
+    const pdf = await pdfjsLib.getDocument(encodeURI(d.file)).promise;
     $("msg").style.display = "none";
     const scale = Math.min(2, (window.devicePixelRatio || 1) * 1.4);
     for (let n = 1; n <= pdf.numPages; n++) {
