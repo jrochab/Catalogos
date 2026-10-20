@@ -158,7 +158,7 @@ function buildFlip() {
   const W = 500, H = Math.round(500 * canvases[0].height / canvases[0].width);
   flip = new St.PageFlip(book, {
     width: W, height: H, size: "stretch",
-    minWidth: 200, maxWidth: 1000, minHeight: 280, maxHeight: 1500,
+    minWidth: 330, maxWidth: 1000, minHeight: 280, maxHeight: 1500,
     showCover: true, usePortrait: true, mobileScrollSupport: false, maxShadowOpacity: 0.4
   });
   flip.loadFromHTML(book.querySelectorAll(".page"));
