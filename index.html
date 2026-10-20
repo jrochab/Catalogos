@@ -32,7 +32,7 @@ h2{font-size:1.05rem;margin:22px 0 10px;color:var(--muted)}
 #nav{display:none;align-items:center;justify-content:center;gap:18px;padding:8px}
 #nav button{font:inherit;font-size:1.1rem;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 16px;cursor:pointer}
 #nav span{color:var(--muted);min-width:70px;text-align:center}
-#zoom{display:none;position:fixed;inset:0;z-index:20;background:var(--bg);flex-direction:column}
+#zoom{touch-action:pan-x pan-y;display:none;position:fixed;inset:0;z-index:20;background:var(--bg);flex-direction:column}
 #zoom.on{display:flex}
 .zbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding:8px;background:var(--surface);border-bottom:1px solid var(--line)}
 .zbar button{font:inherit;font-weight:600;color:var(--accent);background:none;border:1px solid var(--line);border-radius:8px;padding:6px 14px;cursor:pointer;min-width:44px}
@@ -282,10 +282,47 @@ function closeZoom() {
 
 $("zoomBtn").addEventListener("click", openZoom);
 $("zclose").addEventListener("click", closeZoom);
-$("zplus").addEventListener("click", () => { zLevel = Math.min(4, zLevel + 0.5); renderZoom(); });
+$("zplus").addEventListener("click", () => { zLevel = Math.min(5, zLevel + 0.5); renderZoom(); });
 $("zminus").addEventListener("click", () => { zLevel = Math.max(1, zLevel - 0.5); renderZoom(); });
 $("zprev").addEventListener("click", () => { if (zIdx > 0) { zIdx--; $("zbody").scrollTop = 0; renderZoom(); } });
 $("znext").addEventListener("click", () => { if (zIdx < pdfDoc.numPages - 1) { zIdx++; $("zbody").scrollTop = 0; renderZoom(); } });
+
+/* Pellizco con dos dedos dentro del zoom */
+(function () {
+  const body = $("zbody");
+  let start = null;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  body.addEventListener("touchstart", e => {
+    const c = body.firstChild;
+    if (e.touches.length === 2 && c) {
+      const r = body.getBoundingClientRect();
+      start = {
+        d: dist(e.touches), level: zLevel, w: c.getBoundingClientRect().width,
+        mx: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left,
+        my: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top,
+        sl: body.scrollLeft, st: body.scrollTop, level2: zLevel
+      };
+    }
+  }, { passive: true });
+  body.addEventListener("touchmove", e => {
+    const c = body.firstChild;
+    if (!start || e.touches.length !== 2 || !c) return;
+    e.preventDefault();
+    const level = Math.max(1, Math.min(5, start.level * dist(e.touches) / start.d));
+    const k = level / start.level;
+    start.level2 = level;
+    c.style.width = (start.w * k) + "px";
+    body.scrollLeft = (start.sl + start.mx) * k - start.mx;
+    body.scrollTop = (start.st + start.my) * k - start.my;
+  }, { passive: false });
+  body.addEventListener("touchend", e => {
+    if (start && e.touches.length < 2) {
+      zLevel = start.level2;
+      start = null;
+      renderZoom();
+    }
+  });
+})();
 
 $("prev").addEventListener("click", () => flip && flip.flipPrev());
 $("next").addEventListener("click", () => flip && flip.flipNext());
