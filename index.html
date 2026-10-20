@@ -27,13 +27,17 @@ h2{font-size:1.05rem;margin:22px 0 10px;color:var(--muted)}
 .bar button{font:inherit;font-weight:600;color:var(--accent);background:none;border:1px solid var(--line);border-radius:8px;padding:4px 10px;cursor:pointer}
 #bookWrap{display:none;width:100%;max-width:1100px;margin:0 auto;height:calc(100vh - 150px);height:calc(100dvh - 150px)}
 #book{width:100%;height:100%}
-#viewer:fullscreen{background:var(--bg);overflow:auto}
-#viewer:fullscreen #bookWrap{max-width:none;height:calc(100vh - 110px);height:calc(100dvh - 110px)}
 .page{background:#fff}
 .page img{display:block;width:100%;height:100%}
 #nav{display:none;align-items:center;justify-content:center;gap:18px;padding:8px}
 #nav button{font:inherit;font-size:1.1rem;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 16px;cursor:pointer}
 #nav span{color:var(--muted);min-width:70px;text-align:center}
+#zoom{display:none;position:fixed;inset:0;z-index:20;background:var(--bg);flex-direction:column}
+#zoom.on{display:flex}
+.zbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding:8px;background:var(--surface);border-bottom:1px solid var(--line)}
+.zbar button{font:inherit;font-weight:600;color:var(--accent);background:none;border:1px solid var(--line);border-radius:8px;padding:6px 14px;cursor:pointer;min-width:44px}
+.zbar span{color:var(--muted);min-width:64px;text-align:center}
+#zbody{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;background:var(--bg)}
 #msg{text-align:center;color:var(--muted);padding:24px}
 </style>
 </head>
@@ -51,13 +55,25 @@ h2{font-size:1.05rem;margin:22px 0 10px;color:var(--muted)}
   <div class="bar">
     <a href="#" id="back">‹ Volver</a>
     <button id="mode" type="button">Ver seguido</button>
-    <button id="full" type="button">Ampliar</button>
+    <button id="zoomBtn" type="button">Zoom</button>
     <a id="dl" href="#" download>Descargar</a>
   </div>
   <div id="msg">Cargando…</div>
   <div id="bookWrap"><div id="book"></div></div>
   <div id="nav"><button id="prev" type="button" aria-label="Página anterior">‹</button><span id="count"></span><button id="next" type="button" aria-label="Página siguiente">›</button></div>
   <div id="pages"></div>
+</div>
+
+<div id="zoom">
+  <div class="zbar">
+    <button id="zclose" type="button">Cerrar</button>
+    <button id="zminus" type="button" aria-label="Alejar">−</button>
+    <button id="zplus" type="button" aria-label="Acercar">+</button>
+    <button id="zprev" type="button" aria-label="Página anterior">‹</button>
+    <span id="zcount"></span>
+    <button id="znext" type="button" aria-label="Página siguiente">›</button>
+  </div>
+  <div id="zbody"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
@@ -193,6 +209,7 @@ async function openDoc(d) {
   window.scrollTo(0, 0);
   try {
     const pdf = await pdfjsLib.getDocument(encodeURI(d.file)).promise;
+    pdfDoc = pdf;
     const scale = Math.min(2, (window.devicePixelRatio || 1) * 1.4);
     for (let n = 1; n <= pdf.numPages; n++) {
       $("msg").textContent = "Cargando página " + n + " de " + pdf.numPages + "…";
@@ -212,20 +229,64 @@ async function openDoc(d) {
 }
 
 $("mode").addEventListener("click", () => { mode = mode === "flip" ? "scroll" : "flip"; showMode(); });
-$("full").addEventListener("click", async () => {
+let pdfDoc = null, zIdx = 0, zLevel = 2, zTok = 0;
+
+async function renderZoom() {
+  if (!pdfDoc) return;
+  const tok = ++zTok, body = $("zbody");
+  $("zcount").textContent = (zIdx + 1) + " / " + pdfDoc.numPages;
+  const cx = (body.scrollLeft + body.clientWidth / 2) / (body.scrollWidth || 1);
+  const cy = (body.scrollTop + body.clientHeight / 2) / (body.scrollHeight || 1);
   try {
-    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
-    await $("viewer").requestFullscreen();
-    if (screen.orientation && screen.orientation.lock && canvases[0] && canvases[0].width > canvases[0].height) {
-      try { await screen.orientation.lock("landscape"); } catch (e) {}
-    }
-  } catch (e) { alert("Su navegador no permite pantalla completa. Pruebe a girar el teléfono."); }
-});
-document.addEventListener("fullscreenchange", () => {
-  $("full").textContent = document.fullscreenElement ? "Reducir" : "Ampliar";
-  if (!document.fullscreenElement && screen.orientation && screen.orientation.unlock) { try { screen.orientation.unlock(); } catch (e) {} }
-  window.dispatchEvent(new Event("resize"));
-});
+    const page = await pdfDoc.getPage(zIdx + 1);
+    const base = page.getViewport({ scale: 1 });
+    const cssW = body.clientWidth * zLevel;
+    const px = Math.min(3200, cssW * (window.devicePixelRatio || 1));
+    const vp = page.getViewport({ scale: px / base.width });
+    const c = document.createElement("canvas");
+    c.width = vp.width; c.height = vp.height;
+    await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+    if (tok !== zTok) return;
+    c.style.cssText = "display:block;background:#fff;height:auto;width:" + cssW + "px";
+    body.innerHTML = "";
+    body.appendChild(c);
+    body.scrollLeft = cx * body.scrollWidth - body.clientWidth / 2;
+    body.scrollTop = cy * body.scrollHeight - body.clientHeight / 2;
+  } catch (e) {}
+}
+
+function currentPageIndex() {
+  if (mode === "flip" && flip) return flip.getCurrentPageIndex();
+  let best = 0;
+  canvases.forEach((c, i) => { if (c.getBoundingClientRect().top < window.innerHeight / 3) best = i; });
+  return best;
+}
+
+function openZoom() {
+  if (!pdfDoc) return;
+  zIdx = Math.min(currentPageIndex(), pdfDoc.numPages - 1);
+  zLevel = 2;
+  $("zbody").innerHTML = "";
+  $("zoom").classList.add("on");
+  document.body.style.overflow = "hidden";
+  renderZoom();
+}
+
+function closeZoom() {
+  $("zoom").classList.remove("on");
+  document.body.style.overflow = "";
+  $("zbody").innerHTML = "";
+  zTok++;
+  if (mode === "flip" && flip) { try { flip.turnToPage(zIdx); updateCount(); } catch (e) {} }
+}
+
+$("zoomBtn").addEventListener("click", openZoom);
+$("zclose").addEventListener("click", closeZoom);
+$("zplus").addEventListener("click", () => { zLevel = Math.min(4, zLevel + 0.5); renderZoom(); });
+$("zminus").addEventListener("click", () => { zLevel = Math.max(1, zLevel - 0.5); renderZoom(); });
+$("zprev").addEventListener("click", () => { if (zIdx > 0) { zIdx--; $("zbody").scrollTop = 0; renderZoom(); } });
+$("znext").addEventListener("click", () => { if (zIdx < pdfDoc.numPages - 1) { zIdx++; $("zbody").scrollTop = 0; renderZoom(); } });
+
 $("prev").addEventListener("click", () => flip && flip.flipPrev());
 $("next").addEventListener("click", () => flip && flip.flipNext());
 
@@ -235,6 +296,8 @@ function route() {
   else {
     destroyFlip();
     canvases = [];
+    pdfDoc = null;
+    closeZoom();
     $("pages").innerHTML = "";
     $("viewer").style.display = "none";
     $("list").style.display = "block";
